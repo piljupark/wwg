@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTripStore } from '@/store/tripStore';
 import { MapPin, X, GripVertical, Star, Navigation, Zap, Clock } from 'lucide-react';
 import { Destination } from '@/types/trip';
-import { getOptimizedOrder, calculateRoute, getRouteDurations } from '@/lib/googleMaps';
+import { getOptimizedNaverRoute, getNaverRouteDurations } from '@/lib/naverMaps';
 
 export default function DestinationList() {
   const { currentTrip, selectedDay, removeDestination, reorderDestinations } = useTripStore();
@@ -15,7 +15,7 @@ export default function DestinationList() {
   const currentDayPlan = currentTrip?.days.find((day) => day.day === selectedDay);
   const destinations = currentDayPlan?.destinations || [];
 
-  // 경로 계산 및 소요시간 업데이트
+  // 경로 소요시간 업데이트
   useEffect(() => {
     const updateDurations = async () => {
       if (destinations.length < 2 || !currentDayPlan?.transportMode) {
@@ -23,11 +23,8 @@ export default function DestinationList() {
         return;
       }
 
-      const result = await calculateRoute(destinations, currentDayPlan.transportMode);
-      if (result) {
-        const times = getRouteDurations(result);
-        setDurations(times);
-      }
+      const times = await getNaverRouteDurations(destinations, currentDayPlan.transportMode);
+      setDurations(times);
     };
 
     updateDurations();
@@ -38,14 +35,18 @@ export default function DestinationList() {
 
     setIsOptimizing(true);
     try {
-      const optimized = await getOptimizedOrder(
+      const optimized = await getOptimizedNaverRoute(
         destinations,
         currentDayPlan.transportMode
       );
       
       if (optimized) {
         reorderDestinations(currentDayPlan.id, optimized);
+      } else {
+        alert('경로 최적화에 실패했습니다.');
       }
+    } catch (error) {
+      alert('경로 최적화 중 오류가 발생했습니다.');
     } finally {
       setIsOptimizing(false);
     }
@@ -91,6 +92,13 @@ export default function DestinationList() {
   const handleRemove = (destinationId: string) => {
     if (!currentDayPlan) return;
     removeDestination(currentDayPlan.id, destinationId);
+  };
+
+  const transportModeLabel = {
+    DRIVING: '자동차',
+    TRANSIT: '대중교통',
+    WALKING: '도보',
+    BICYCLING: '자전거',
   };
 
   return (
@@ -172,8 +180,10 @@ export default function DestinationList() {
           {index < destinations.length - 1 && durations[index] && (
             <div className="flex items-center gap-2 py-2 px-4 text-sm text-gray-500">
               <Navigation className="w-4 h-4" />
-              <span className="font-medium">{currentDayPlan?.transportMode || 'DRIVING'}</span>
-              <Clock className="w-4 h-4 ml-2" />
+              <span className="font-medium">
+                {transportModeLabel[currentDayPlan?.transportMode || 'DRIVING']}
+              </span>
+              <Clock className="w-4 h-4 ml-2 text-blue-500" />
               <span className="font-semibold text-blue-600">{durations[index]}</span>
             </div>
           )}

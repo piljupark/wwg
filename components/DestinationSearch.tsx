@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, MapPin, Star, Clock } from 'lucide-react';
-import { searchPlaces, getPlaceDetails } from '@/lib/googleMaps';
+import { Search, MapPin, Star } from 'lucide-react';
+import { searchNaverPlaces, geocodeAddress } from '@/lib/naverMaps';
 import { useTripStore } from '@/store/tripStore';
 import { Destination } from '@/types/trip';
 
@@ -23,11 +23,10 @@ export default function DestinationSearch() {
 
     setIsSearching(true);
     try {
-      const places = await searchPlaces(searchQuery);
+      const places = await searchNaverPlaces(searchQuery);
       setResults(places);
       setShowResults(places.length > 0);
     } catch (error) {
-      // 에러 시 조용히 처리
       setResults([]);
       setShowResults(false);
     } finally {
@@ -42,20 +41,20 @@ export default function DestinationSearch() {
     if (!currentDayPlan) return;
 
     try {
-      // 상세 정보 가져오기
-      const details = await getPlaceDetails(place.place_id);
+      // 주소로 좌표 가져오기
+      const coords = await geocodeAddress(place.roadAddress || place.address);
+      
+      if (!coords) {
+        alert('위치 정보를 가져올 수 없습니다.');
+        return;
+      }
 
       const destination: Destination = {
         id: `dest-${Date.now()}`,
-        name: place.name,
-        address: place.formatted_address || '',
-        placeId: place.place_id,
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng(),
-        rating: details.rating,
-        photos: details.photos?.slice(0, 3).map((photo: any) =>
-          photo.getUrl({ maxWidth: 400 })
-        ),
+        name: place.title.replace(/<[^>]*>/g, ''), // HTML 태그 제거
+        address: place.roadAddress || place.address,
+        lat: coords.lat,
+        lng: coords.lng,
       };
 
       addDestination(currentDayPlan.id, destination);
@@ -64,6 +63,7 @@ export default function DestinationSearch() {
       setShowResults(false);
     } catch (error) {
       console.error('Failed to add destination:', error);
+      alert('목적지 추가에 실패했습니다.');
     }
   };
 
@@ -86,24 +86,24 @@ export default function DestinationSearch() {
       {showResults && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
           {results.length > 0 ? (
-            results.map((place) => (
+            results.map((place, index) => (
               <button
-                key={place.place_id}
+                key={index}
                 onClick={() => handleSelectPlace(place)}
-                className="w-full p-4 hover:bg-gray-50 flex items-start gap-3 text-left transition-colors"
+                className="w-full p-4 hover:bg-gray-50 flex items-start gap-3 text-left transition-colors border-b border-gray-100 last:border-0"
               >
                 <MapPin className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate">
-                    {place.name}
+                  <div 
+                    className="font-medium text-gray-900 truncate"
+                    dangerouslySetInnerHTML={{ __html: place.title }}
+                  />
+                  <div className="text-sm text-gray-500 truncate mt-0.5">
+                    {place.roadAddress || place.address}
                   </div>
-                  <div className="text-sm text-gray-500 truncate">
-                    {place.formatted_address}
-                  </div>
-                  {place.rating && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                      <span className="text-sm text-gray-600">{place.rating}</span>
+                  {place.category && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {place.category}
                     </div>
                   )}
                 </div>

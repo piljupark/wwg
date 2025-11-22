@@ -16,11 +16,12 @@
     "next": "^14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "zustand": "^4.4.7",
-    "undici": "5.28.4"
+    "undici": "5.28.4",
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/google.maps": "^3.54.10",
+    "@types/navermaps": "^3.9.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

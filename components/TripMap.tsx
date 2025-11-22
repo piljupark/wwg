@@ -3,17 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTripStore } from '@/store/tripStore';
 import {
-  loadGoogleMaps,
-  initMap,
-  addMarkers,
-  calculateRoute,
-} from '@/lib/googleMaps';
+  loadNaverMaps,
+  initNaverMap,
+  addNaverMarkers,
+  drawNaverRoute,
+} from '@/lib/naverMaps';
 
 export default function TripMap() {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const mapInstanceRef = useRef<naver.maps.Map | null>(null);
+  const markersRef = useRef<naver.maps.Marker[]>([]);
+  const polylineRef = useRef<naver.maps.Polyline | null>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { currentTrip, selectedDay } = useTripStore();
@@ -28,11 +28,12 @@ export default function TripMap() {
       if (!mapRef.current) return;
 
       try {
-        await loadGoogleMaps();
-        const center = { lat: 37.5665, lng: 126.9780 };
-        mapInstanceRef.current = initMap(mapRef.current, center);
+        await loadNaverMaps();
+        const center = { lat: 37.5665, lng: 126.9780 }; // 서울 중심
+        mapInstanceRef.current = initNaverMap(mapRef.current, center);
         setIsLoading(false);
       } catch (error) {
+        console.error('Map initialization failed:', error);
         setIsLoading(false);
       }
     };
@@ -56,21 +57,21 @@ export default function TripMap() {
       markersRef.current = [];
 
       // 기존 경로 제거
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-        directionsRendererRef.current = null;
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
       }
 
       if (destinations.length === 0) return;
 
       // 새 마커 추가
-      const markers = addMarkers(mapInstanceRef.current, destinations);
+      const markers = addNaverMarkers(mapInstanceRef.current, destinations);
       markersRef.current = markers;
 
       // 지도 범위 조정
-      const bounds = new google.maps.LatLngBounds();
+      const bounds = new naver.maps.LatLngBounds();
       destinations.forEach((dest) => {
-        bounds.extend({ lat: dest.lat, lng: dest.lng });
+        bounds.extend(new naver.maps.LatLng(dest.lat, dest.lng));
       });
       mapInstanceRef.current.fitBounds(bounds);
 
@@ -82,100 +83,16 @@ export default function TripMap() {
         return;
       }
 
-      // 2개 이상이면 경로 표시 시도
+      // 2개 이상이면 경로 표시
       if (destinations.length >= 2 && currentDayPlan?.transportMode) {
-        const mode = currentDayPlan.transportMode;
+        const polyline = await drawNaverRoute(
+          mapInstanceRef.current,
+          destinations,
+          currentDayPlan.transportMode
+        );
         
-        // DRIVING 모드는 모든 경유지 포함 가능
-        if (mode === 'DRIVING') {
-          try {
-            const result = await calculateRoute(destinations, mode);
-            
-            if (result && mapInstanceRef.current) {
-              const renderer = new google.maps.DirectionsRenderer({
-                map: mapInstanceRef.current,
-                suppressMarkers: true,
-                polylineOptions: {
-                  strokeColor: '#4285F4',
-                  strokeWeight: 6,
-                  strokeOpacity: 0.7,
-                },
-              });
-              
-              renderer.setDirections(result);
-              directionsRendererRef.current = renderer;
-
-              if (result.routes[0]?.bounds) {
-                mapInstanceRef.current.fitBounds(result.routes[0].bounds);
-              }
-            } else {
-              // 실패 시 직선
-              const path = destinations.map(dest => ({ lat: dest.lat, lng: dest.lng }));
-              new google.maps.Polyline({
-                path,
-                map: mapInstanceRef.current,
-                strokeColor: '#9CA3AF',
-                strokeWeight: 3,
-                strokeOpacity: 0.6,
-                geodesic: true,
-              });
-            }
-          } catch (error) {
-            // 직선으로 표시
-            if (mapInstanceRef.current) {
-              const path = destinations.map(dest => ({ lat: dest.lat, lng: dest.lng }));
-              new google.maps.Polyline({
-                path,
-                map: mapInstanceRef.current,
-                strokeColor: '#9CA3AF',
-                strokeWeight: 3,
-                strokeOpacity: 0.6,
-                geodesic: true,
-              });
-            }
-          }
-        } else {
-          // TRANSIT, WALKING, BICYCLING: 구간별로 경로 그리기
-          if (mapInstanceRef.current) {
-            for (let i = 0; i < destinations.length - 1; i++) {
-              try {
-                const result = await calculateRoute(
-                  [destinations[i], destinations[i + 1]], 
-                  mode
-                );
-                
-                if (result) {
-                  const renderer = new google.maps.DirectionsRenderer({
-                    map: mapInstanceRef.current,
-                    suppressMarkers: true,
-                    preserveViewport: true,
-                    polylineOptions: {
-                      strokeColor: mode === 'TRANSIT' ? '#34A853' : mode === 'WALKING' ? '#EA4335' : '#FBBC04',
-                      strokeWeight: 5,
-                      strokeOpacity: 0.7,
-                    },
-                  });
-                  
-                  renderer.setDirections(result);
-                }
-              } catch (error) {
-                // 실패한 구간은 직선으로
-                const path = [
-                  { lat: destinations[i].lat, lng: destinations[i].lng },
-                  { lat: destinations[i + 1].lat, lng: destinations[i + 1].lng }
-                ];
-                
-                new google.maps.Polyline({
-                  path,
-                  map: mapInstanceRef.current!,
-                  strokeColor: '#9CA3AF',
-                  strokeWeight: 3,
-                  strokeOpacity: 0.5,
-                  geodesic: true,
-                });
-              }
-            }
-          }
+        if (polyline) {
+          polylineRef.current = polyline;
         }
       }
     }, 500);
